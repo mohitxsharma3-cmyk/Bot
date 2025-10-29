@@ -1,8 +1,6 @@
 import os
 import sqlite3
-import asyncio
-from threading import Thread
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -12,43 +10,44 @@ from telegram.ext import (
     filters,
 )
 
-# ====== BOT TOKEN ======
-BOT_TOKEN = os.getenv("BOT_TOKEN", "6065570955:AAHIUsfGhc2MmQ3EiJtOw5ozzyQ7EzmWsmA")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 
-# ====== DATABASE SETUP ======
+# ---------- DATABASE ---------- #
 def init_db():
-    conn = sqlite3.connect('tokens.db')
+    conn = sqlite3.connect("tokens.db")
     cursor = conn.cursor()
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS tokens (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             token TEXT UNIQUE
         )
-    ''')
+    """)
     conn.commit()
     conn.close()
 
+
 def save_token(token: str):
-    conn = sqlite3.connect('tokens.db')
+    conn = sqlite3.connect("tokens.db")
     cursor = conn.cursor()
     try:
-        cursor.execute('INSERT INTO tokens (token) VALUES (?)', (token,))
+        cursor.execute("INSERT INTO tokens (token) VALUES (?)", (token,))
         conn.commit()
     except sqlite3.IntegrityError:
-        # Ignore duplicates
         pass
     finally:
         conn.close()
 
+
 def get_tokens():
-    conn = sqlite3.connect('tokens.db')
+    conn = sqlite3.connect("tokens.db")
     cursor = conn.cursor()
-    cursor.execute('SELECT token FROM tokens')
+    cursor.execute("SELECT token FROM tokens")
     tokens = [row[0] for row in cursor.fetchall()]
     conn.close()
     return tokens
 
-# ====== TELEGRAM COMMANDS ======
+
+# ---------- TELEGRAM ---------- #
 async def tokens_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tokens = get_tokens()
     if tokens:
@@ -56,49 +55,46 @@ async def tokens_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("No tokens stored yet.")
 
+
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     token = update.message.text.strip()
     save_token(token)
     await update.message.reply_text("✅ Token received and saved.")
 
-# ====== FLASK APP (for uptime ping) ======
+
+# ---------- FLASK ---------- #
 app = Flask(__name__)
 
-@app.route('/')
+@app.route("/")
 def home():
-    return jsonify({"status": "Bot alive and running!"})
+    return jsonify({"status": "Bot and server are running!"})
 
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
 
-# ====== TELEGRAM BOT SETUP ======
+# ---------- MAIN ---------- #
 async def main():
     init_db()
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Command: /tokens
     application.add_handler(CommandHandler("tokens", tokens_command))
-
-    # Save any plain text messages as tokens
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
     print("✅ Telegram bot started successfully.")
-    await application.run_polling()
 
-# ====== ENTRY POINT ======
+    # Instead of using threads, run Flask and bot together on same event loop
+    from hypercorn.asyncio import serve
+    from hypercorn.config import Config
+
+    config = Config()
+    config.bind = [f"0.0.0.0:{os.environ.get('PORT', 10000)}"]
+
+    # Run Flask + Bot concurrently
+    import asyncio
+    await asyncio.gather(
+        serve(app, config),
+        application.run_polling()
+    )
+
+
 if __name__ == "__main__":
-    # Run Flask in a separate thread
-    Thread(target=run_flask, daemon=True).start()
-
-    # Render-safe event loop handling
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.ensure_future(main())
-            loop.run_forever()
-        else:
-            loop.run_until_complete(main())
-    except RuntimeError:
-        asyncio.run(main())
-        
+    import asyncio
+    asyncio.run(main())
