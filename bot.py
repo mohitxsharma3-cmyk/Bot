@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import asyncio
 from threading import Thread
 from flask import Flask, jsonify
 from telegram import Update
@@ -75,16 +76,23 @@ def run_flask():
 
 
 # ---------- TELEGRAM BOT ---------- #
-async def run_bot():
+async def main():
     init_db()
-    app_builder = ApplicationBuilder().token(BOT_TOKEN).build()
-    app_builder.add_handler(CommandHandler("tokens", tokens_command))
-    app_builder.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-    print("✅ Telegram bot running...")
-    await app_builder.run_polling()
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    application.add_handler(CommandHandler("tokens", tokens_command))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+    print("✅ Telegram bot started successfully.")
+    await application.run_polling()
 
 
 if __name__ == "__main__":
     Thread(target=run_flask, daemon=True).start()
-    import asyncio
-    asyncio.run(run_bot())
+
+    # Prevent RuntimeError: event loop already running
+    try:
+        asyncio.run(main())
+    except RuntimeError:
+        loop = asyncio.get_event_loop()
+        loop.create_task(main())
+        loop.run_forever()
+        
