@@ -3,11 +3,15 @@ import sqlite3
 from threading import Thread
 from flask import Flask, jsonify
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
 
-# Replace this with your actual Telegram bot token or set BOT_TOKEN as an environment variable in Render
-BOT_TOKEN = os.getenv("BOT_TOKEN", "6065570955:AAHIUsfGhc2MmQ3EiJtOw5ozzyQ7EzmWsmA")
-
+BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 
 # ---------- DATABASE SETUP ---------- #
 def init_db():
@@ -30,7 +34,6 @@ def save_token(token: str):
         cursor.execute('INSERT INTO tokens (token) VALUES (?)', (token,))
         conn.commit()
     except sqlite3.IntegrityError:
-        # Token already exists
         pass
     finally:
         conn.close()
@@ -46,51 +49,42 @@ def get_tokens():
 
 
 # ---------- TELEGRAM HANDLERS ---------- #
-def tokens_command(update: Update, context: CallbackContext):
+async def tokens_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tokens = get_tokens()
     if tokens:
-        update.message.reply_text("\n".join(tokens))  # ✅ fixed syntax error
+        await update.message.reply_text("\n".join(tokens))
     else:
-        update.message.reply_text("No tokens stored yet.")
+        await update.message.reply_text("No tokens stored yet.")
 
 
-def message_handler(update: Update, context: CallbackContext):
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     token = update.message.text.strip()
     save_token(token)
-    update.message.reply_text("✅ Token received and saved.")
+    await update.message.reply_text("✅ Token received and saved.")
 
 
 # ---------- FLASK SERVER ---------- #
 app = Flask(__name__)
 
-
 @app.route('/')
 def home():
     return jsonify({"status": "Bot alive!"})
-
 
 def run_flask():
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
 
 # ---------- TELEGRAM BOT ---------- #
-def run_bot():
+async def run_bot():
     init_db()
-    updater = Updater(BOT_TOKEN, use_context=True)  # safer with use_context
-    dispatcher = updater.dispatcher
-
-    dispatcher.add_handler(CommandHandler("tokens", tokens_command))
-    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, message_handler))
-
-    print("✅ Telegram bot is running...")
-    updater.start_polling()
-    updater.idle()
+    app_builder = ApplicationBuilder().token(BOT_TOKEN).build()
+    app_builder.add_handler(CommandHandler("tokens", tokens_command))
+    app_builder.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+    print("✅ Telegram bot running...")
+    await app_builder.run_polling()
 
 
-# ---------- MAIN ENTRY ---------- #
 if __name__ == "__main__":
-    # Start Flask web server in a background thread
     Thread(target=run_flask, daemon=True).start()
-    # Start Telegram bot in main thread
-    run_bot()
-    
+    import asyncio
+    asyncio.run(run_bot())
