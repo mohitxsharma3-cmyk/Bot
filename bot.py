@@ -68,4 +68,35 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Token received and saved.")
 
 
-# ---------- FLASK APP FOR
+# ---------- FLASK APP FOR RENDER PING ---------- #
+app = Flask(__name__)
+
+
+@app.route("/")
+def home():
+    return jsonify({"status": "Bot server is running"})
+
+
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
+
+# ---------- TELEGRAM BOT RUNNER ---------- #
+async def run_telegram_bot():
+    init_db()
+    app_builder = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app_builder.add_handler(CommandHandler("tokens", tokens_command))
+    app_builder.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+
+    print("✅ Telegram bot started successfully.")
+    await app_builder.run_polling()
+
+
+# ---------- MAIN ENTRY POINT ---------- #
+if __name__ == "__main__":
+    Thread(target=run_flask).start()
+
+    import asyncio
+    asyncio.run(run_telegram_bot())
