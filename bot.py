@@ -12,7 +12,7 @@ from telegram.ext import (
 )
 
 # Get Telegram bot token from environment or fallback
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "6065570955:AAHIUsfGhc2MmQ3EiJtOw5ozzyQ7EzmWsmA")
 
 # ---------- DATABASE SETUP ---------- #
 def init_db():
